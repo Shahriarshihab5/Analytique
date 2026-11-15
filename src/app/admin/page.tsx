@@ -11,13 +11,17 @@ import {
   Inbox, 
   Search, 
   Filter, 
-  ArrowLeft,
-  DollarSign,
-  TrendingUp,
-  FileSpreadsheet,
-  AlertCircle,
-  RefreshCw,
-  Cloud
+  ArrowLeft, 
+  DollarSign, 
+  TrendingUp, 
+  FileSpreadsheet, 
+  AlertCircle, 
+  RefreshCw, 
+  Cloud,
+  Lock,
+  LogOut,
+  ShieldAlert,
+  KeyRound
 } from "lucide-react";
 import { PROJECTS } from "@/data/content";
 import { supabase } from "@/lib/supabase";
@@ -75,15 +79,43 @@ const DEFAULT_LEADS: Lead[] = [
 ];
 
 export default function AdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState(false);
+
   const [leads, setLeads] = useState<Lead[]>(DEFAULT_LEADS);
   const [activeTab, setActiveTab] = useState<"leads" | "projects" | "metrics">("leads");
   const [search, setSearch] = useState("");
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
 
+  // Check persistent login session in browser sessionStorage
+  useEffect(() => {
+    const authSession = sessionStorage.getItem("analytique_admin_auth");
+    if (authSession === "authenticated") {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (username.trim() === "Analytique" && password === "Shihabsh5729#") {
+      setIsAuthenticated(true);
+      setLoginError(false);
+      sessionStorage.setItem("analytique_admin_auth", "authenticated");
+    } else {
+      setLoginError(true);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem("analytique_admin_auth");
+  };
+
   const fetchLeads = async () => {
     setIsCloudSyncing(true);
     try {
-      // 1. Fetch from Supabase Cloud
       const { data, error } = await supabase
         .from("enquiries")
         .select("*")
@@ -105,7 +137,6 @@ export default function AdminPage() {
 
         setLeads([...cloudLeads, ...DEFAULT_LEADS]);
       } else {
-        // Fallback to local storage
         const stored = localStorage.getItem("analytique_leads");
         if (stored) {
           const parsed = JSON.parse(stored);
@@ -120,8 +151,10 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    fetchLeads();
-  }, []);
+    if (isAuthenticated) {
+      fetchLeads();
+    }
+  }, [isAuthenticated]);
 
   const filteredLeads = leads.filter(
     (l) =>
@@ -130,6 +163,87 @@ export default function AdminPage() {
       l.referenceId.toLowerCase().includes(search.toLowerCase())
   );
 
+  // ==========================================
+  // 1. Password Protection Gate
+  // ==========================================
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#F6F3EB] flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white border border-[#E0D9CC] rounded-3xl p-8 shadow-xl">
+          <div className="flex flex-col items-center text-center space-y-3 pb-6 border-b border-[#EFEBE1]">
+            <div className="w-12 h-12 rounded-2xl bg-[#1E201E] text-white flex items-center justify-center shadow-md">
+              <Lock className="w-6 h-6 text-[#A66F4F]" />
+            </div>
+            <h2 className="font-serif text-2xl font-bold text-[#1E201E]">
+              Analytique Workspace
+            </h2>
+            <p className="text-xs text-[#78806B]">
+              Restricted management portal • Authorized personnel only
+            </p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4 pt-6">
+            {loginError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 text-red-600" />
+                <span>Invalid credentials. Access denied.</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#3C4135] mb-1.5">
+                Username
+              </label>
+              <input
+                type="text"
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter admin username"
+                className="w-full px-4 py-2.5 rounded-xl border border-[#D5CDC0] bg-[#FAF8F5] text-xs font-medium text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#3C4135] mb-1.5">
+                Password
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                className="w-full px-4 py-2.5 rounded-xl border border-[#D5CDC0] bg-[#FAF8F5] text-xs font-medium text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 bg-[#1E201E] hover:bg-[#343831] text-white rounded-full text-xs font-semibold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-[#A66F4F]" />
+              Unlock Admin Portal
+            </button>
+
+            <div className="pt-2 text-center">
+              <Link
+                href="/"
+                className="text-xs text-[#7A8272] hover:text-[#1E201E] transition-colors inline-flex items-center gap-1"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Return to Public Website
+              </Link>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // 2. Protected Dashboard Workspace
+  // ==========================================
   return (
     <div className="min-h-screen bg-[#F6F3EB] text-[#1E201E]">
       <header className="bg-white border-b border-[#E2DDD0] sticky top-0 z-30">
@@ -163,8 +277,14 @@ export default function AdminPage() {
               <RefreshCw className={`w-3 h-3 ${isCloudSyncing ? "animate-spin" : ""}`} />
               Refresh Cloud
             </button>
-            <span className="hidden sm:inline text-[#DDD5C7]">|</span>
-            <span className="hidden sm:inline">analytique.team@gmail.com</span>
+
+            <button
+              onClick={handleLogout}
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-colors"
+            >
+              <LogOut className="w-3 h-3" />
+              Sign Out
+            </button>
           </div>
         </div>
       </header>
