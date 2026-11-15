@@ -4,12 +4,8 @@ import React, { useState, useTransition } from "react";
 import { 
   X, 
   Send, 
-  FileText, 
   UploadCloud, 
-  CheckCircle, 
-  Clock, 
-  DollarSign,
-  AlertCircle
+  CheckCircle,
 } from "lucide-react";
 import { SERVICES, Project } from "@/data/content";
 import { supabase } from "@/lib/supabase";
@@ -40,51 +36,58 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
 
     const ref = "ANL-" + Math.floor(100000 + Math.random() * 900000);
     setReferenceId(ref);
 
-    // 1. Send direct email to analytique.team@gmail.com
-    fetch("https://formsubmit.co/ajax/analytique.team@gmail.com", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        _subject: `New Client Quote [${ref}] - ${formData.name}`,
-        Reference_ID: ref,
-        Client_Name: formData.name,
-        Client_Email: formData.email,
-        Company: formData.company || "N/A",
-        Service: formData.serviceId,
-        Budget: formData.budget,
-        Timeline: formData.timeline,
-        Message: formData.description,
-      }),
-    }).catch((err) => console.warn("Email dispatch fallback:", err));
+    // 1. Prepare form data to send directly via standard FormSubmit API
+    const postData = new FormData();
+    postData.append("Reference_ID", ref);
+    postData.append("Client_Name", formData.name);
+    postData.append("Client_Email", formData.email);
+    postData.append("Company", formData.company || "N/A");
+    postData.append("Service_Requested", formData.serviceId);
+    postData.append("Budget", formData.budget);
+    postData.append("Timeline", formData.timeline);
+    postData.append("Project_Brief", formData.description);
+    postData.append("_subject", `[Analytique Quote] New Project Inquiry from ${formData.name} (${ref})`);
+    postData.append("_captcha", "false");
+    postData.append("_template", "table");
+
+    try {
+      await fetch("https://formsubmit.co/analytique.team@gmail.com", {
+        method: "POST",
+        body: postData,
+        headers: {
+          Accept: "application/json",
+        },
+      });
+    } catch (err) {
+      console.warn("Mail dispatch log:", err);
+    }
 
     // 2. Also log to Supabase Cloud
-    supabase.from("enquiries").insert([
-      {
-        reference_id: ref,
-        name: formData.name,
-        email: formData.email,
-        company: formData.company,
-        service_id: formData.serviceId,
-        budget: formData.budget,
-        timeline: formData.timeline,
-        description: formData.description,
-        status: "New",
-      },
-    ]).then(({ error }) => {
-      if (error) console.warn("Supabase note:", error.message);
-    }).catch((err) => console.warn("Cloud error:", err));
+    try {
+      await supabase.from("enquiries").insert([
+        {
+          reference_id: ref,
+          name: formData.name,
+          email: formData.email,
+          company: formData.company,
+          service_id: formData.serviceId,
+          budget: formData.budget,
+          timeline: formData.timeline,
+          description: formData.description,
+          status: "New",
+        },
+      ]);
+    } catch (err) {
+      console.warn("Supabase log:", err);
+    }
 
-    // 3. Update UI state smoothly
     setLoading(false);
     setSubmitted(true);
   };
@@ -126,13 +129,13 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                 Quote Request Sent!
               </h4>
               <p className="text-sm text-[#545A4E] max-w-md mx-auto">
-                Thank you, <strong>{formData.name}</strong>. Your proposal has been transmitted directly to Syed at <strong>analytique.team@gmail.com</strong>.
+                Thank you, <strong>{formData.name}</strong>. Your proposal has been dispatched directly to <strong>analytique.team@gmail.com</strong>.
               </p>
               <div className="inline-block px-4 py-2 bg-white border border-[#D5CDC0] rounded-xl font-mono text-base font-bold text-[#1E201E]">
-                Ref: {referenceId}
+                Reference ID: {referenceId}
               </div>
               <p className="text-xs text-[#7B8273] max-w-md mx-auto">
-                We will review your dataset and business question within 24 business hours.
+                Check your inbox (and spam folder if first time) for confirmation.
               </p>
               <div className="pt-4">
                 <button
@@ -301,7 +304,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                     </span>
                   </div>
                 </div>
-                <label className="px-3 py-1 bg-[#F5F2EB] hover:bg-[#EAE4D7] border border-[#DDD6C8] text-[#343830] text-xs font-medium rounded-lg cursor-pointer">
+                <label className="px-3 py-1 bg-[#F5F2EB] hover:bg-[#EAE4D7] border border-[#DDD6C8] text-[#343831] text-xs font-medium rounded-lg cursor-pointer">
                   Browse
                   <input type="file" className="hidden" />
                 </label>
@@ -314,7 +317,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   className="w-full py-3 text-xs font-semibold uppercase tracking-wider bg-[#1E201E] hover:bg-[#323630] text-white rounded-full transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
                   {loading ? (
-                    <span>Transmitting Quote...</span>
+                    <span>Sending to analytique.team@gmail.com...</span>
                   ) : (
                     <>
                       <span>Submit Quote Request</span>
