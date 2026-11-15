@@ -43,3 +43,4 @@ Sent automatically to analytique.team@gmail.com
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+

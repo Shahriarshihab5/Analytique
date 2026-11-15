@@ -6,6 +6,9 @@ import {
   Send, 
   UploadCloud, 
   CheckCircle,
+  Mail,
+  Copy,
+  ExternalLink
 } from "lucide-react";
 import { SERVICES, Project } from "@/data/content";
 import { supabase } from "@/lib/supabase";
@@ -43,30 +46,18 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
     const ref = "ANL-" + Math.floor(100000 + Math.random() * 900000);
     setReferenceId(ref);
 
-    // 1. Prepare form data to send directly via standard FormSubmit API
-    const postData = new FormData();
-    postData.append("Reference_ID", ref);
-    postData.append("Client_Name", formData.name);
-    postData.append("Client_Email", formData.email);
-    postData.append("Company", formData.company || "N/A");
-    postData.append("Service_Requested", formData.serviceId);
-    postData.append("Budget", formData.budget);
-    postData.append("Timeline", formData.timeline);
-    postData.append("Project_Brief", formData.description);
-    postData.append("_subject", `[Analytique Quote] New Project Inquiry from ${formData.name} (${ref})`);
-    postData.append("_captcha", "false");
-    postData.append("_template", "table");
-
+    // 1. Dispatch through server-side API endpoint
     try {
-      await fetch("https://formsubmit.co/analytique.team@gmail.com", {
+      await fetch("/api/send-email", {
         method: "POST",
-        body: postData,
-        headers: {
-          Accept: "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          referenceId: ref,
+          ...formData,
+        }),
       });
     } catch (err) {
-      console.warn("Mail dispatch log:", err);
+      console.warn("Server email dispatch error:", err);
     }
 
     // 2. Also log to Supabase Cloud
@@ -85,12 +76,34 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
         },
       ]);
     } catch (err) {
-      console.warn("Supabase log:", err);
+      console.warn("Supabase log error:", err);
+    }
+
+    // 3. Keep in local storage as reliable fallback
+    try {
+      const existing = JSON.parse(localStorage.getItem("analytique_leads") || "[]");
+      localStorage.setItem("analytique_leads", JSON.stringify([
+        {
+          ...formData,
+          referenceId: ref,
+          status: "New",
+          timestamp: new Date().toISOString(),
+        },
+        ...existing
+      ]));
+    } catch (err) {
+      console.warn("Local storage write error:", err);
     }
 
     setLoading(false);
     setSubmitted(true);
   };
+
+  const mailtoLink = `mailto:analytique.team@gmail.com?subject=${encodeURIComponent(
+    `[Quote Inquiry ${referenceId}] - ${formData.name}`
+  )}&body=${encodeURIComponent(
+    `Client Name: ${formData.name}\nEmail: ${formData.email}\nCompany: ${formData.company || "N/A"}\nService: ${formData.serviceId}\nBudget: ${formData.budget}\nTimeline: ${formData.timeline}\n\nProject Brief:\n${formData.description}`
+  )}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
@@ -107,7 +120,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
               Request a Project Quote
             </h3>
             <p className="text-xs text-[#7A8072]">
-              Direct review by Syed Shahriar Ahmed • Sent to analytique.team@gmail.com
+              Direct review by Syed Shahriar Ahmed • analytique.team@gmail.com
             </p>
           </div>
           <button
@@ -121,31 +134,43 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
         {/* Body Content */}
         <div className="p-6 sm:p-8 overflow-y-auto">
           {submitted ? (
-            <div className="text-center py-10 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700 mx-auto flex items-center justify-center">
-                <CheckCircle className="w-8 h-8" />
+            <div className="text-center py-6 space-y-4">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700 mx-auto flex items-center justify-center">
+                <CheckCircle className="w-7 h-7" />
               </div>
               <h4 className="font-serif text-2xl font-bold text-[#1E201E]">
-                Quote Request Sent!
+                Quote Request Logged!
               </h4>
               <p className="text-sm text-[#545A4E] max-w-md mx-auto">
-                Thank you, <strong>{formData.name}</strong>. Your proposal has been dispatched directly to <strong>analytique.team@gmail.com</strong>.
+                Thank you, <strong>{formData.name}</strong>. Your enquiry has been registered under reference:
               </p>
               <div className="inline-block px-4 py-2 bg-white border border-[#D5CDC0] rounded-xl font-mono text-base font-bold text-[#1E201E]">
-                Reference ID: {referenceId}
+                {referenceId}
               </div>
-              <p className="text-xs text-[#7B8273] max-w-md mx-auto">
-                Check your inbox (and spam folder if first time) for confirmation.
-              </p>
-              <div className="pt-4">
+
+              {/* Direct Mail trigger for 100% guarantee */}
+              <div className="pt-2 max-w-md mx-auto space-y-3">
+                <a
+                  href={mailtoLink}
+                  className="w-full py-3 bg-[#1E201E] hover:bg-[#343831] text-white rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm"
+                >
+                  <Mail className="w-4 h-4 text-[#A66F4F]" />
+                  Open Direct Mail to Syed (One-Click)
+                </a>
+                <p className="text-[11px] text-[#7A8272]">
+                  This guarantees your inquiry reaches Syed immediately via your default mail client.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-[#EAE3D5]">
                 <button
                   onClick={() => {
                     setSubmitted(false);
                     onClose();
                   }}
-                  className="px-6 py-2.5 text-xs font-semibold uppercase tracking-wider bg-[#1E201E] text-white rounded-full hover:bg-[#343831] transition-all"
+                  className="px-6 py-2 text-xs font-semibold uppercase tracking-wider text-[#585E50] hover:text-[#1E201E] transition-colors"
                 >
-                  Close
+                  Done
                 </button>
               </div>
             </div>
@@ -317,7 +342,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   className="w-full py-3 text-xs font-semibold uppercase tracking-wider bg-[#1E201E] hover:bg-[#323630] text-white rounded-full transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
                   {loading ? (
-                    <span>Sending to analytique.team@gmail.com...</span>
+                    <span>Processing Submission...</span>
                   ) : (
                     <>
                       <span>Submit Quote Request</span>
