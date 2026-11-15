@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useTransition } from "react";
 import { 
   X, 
   Send, 
@@ -24,6 +24,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [referenceId, setReferenceId] = useState("");
+  const [, startTransition] = useTransition();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -46,45 +47,44 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
     const ref = "ANL-" + Math.floor(100000 + Math.random() * 900000);
     setReferenceId(ref);
 
-    try {
-      // 1. Save directly to Cloud Supabase
-      const { error } = await supabase.from("enquiries").insert([
-        {
-          reference_id: ref,
-          name: formData.name,
-          email: formData.email,
-          company: formData.company,
-          service_id: formData.serviceId,
-          budget: formData.budget,
-          timeline: formData.timeline,
-          description: formData.description,
-          status: "New",
-        },
-      ]);
+    // 1. Send direct email to analytique.team@gmail.com
+    fetch("https://formsubmit.co/ajax/analytique.team@gmail.com", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        _subject: `New Client Quote [${ref}] - ${formData.name}`,
+        Reference_ID: ref,
+        Client_Name: formData.name,
+        Client_Email: formData.email,
+        Company: formData.company || "N/A",
+        Service: formData.serviceId,
+        Budget: formData.budget,
+        Timeline: formData.timeline,
+        Message: formData.description,
+      }),
+    }).catch((err) => console.warn("Email dispatch fallback:", err));
 
-      if (error) {
-        console.warn("Supabase insert note:", error.message);
-      }
-    } catch (err) {
-      console.warn("Cloud write error:", err);
-    }
+    // 2. Also log to Supabase Cloud
+    supabase.from("enquiries").insert([
+      {
+        reference_id: ref,
+        name: formData.name,
+        email: formData.email,
+        company: formData.company,
+        service_id: formData.serviceId,
+        budget: formData.budget,
+        timeline: formData.timeline,
+        description: formData.description,
+        status: "New",
+      },
+    ]).then(({ error }) => {
+      if (error) console.warn("Supabase note:", error.message);
+    }).catch((err) => console.warn("Cloud error:", err));
 
-    // 2. Also keep in local storage as instant fallback
-    try {
-      const existing = JSON.parse(localStorage.getItem("analytique_leads") || "[]");
-      localStorage.setItem("analytique_leads", JSON.stringify([
-        {
-          ...formData,
-          referenceId: ref,
-          status: "New",
-          timestamp: new Date().toISOString(),
-        },
-        ...existing
-      ]));
-    } catch (err) {
-      console.warn("Local storage fallback skipped:", err);
-    }
-
+    // 3. Update UI state smoothly
     setLoading(false);
     setSubmitted(true);
   };
@@ -104,7 +104,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
               Request a Project Quote
             </h3>
             <p className="text-xs text-[#7A8072]">
-              Direct review by Syed Shahriar Ahmed • Response within 24 business hours
+              Direct review by Syed Shahriar Ahmed • Sent to analytique.team@gmail.com
             </p>
           </div>
           <button
@@ -123,16 +123,16 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                 <CheckCircle className="w-8 h-8" />
               </div>
               <h4 className="font-serif text-2xl font-bold text-[#1E201E]">
-                Quote Request Received!
+                Quote Request Sent!
               </h4>
               <p className="text-sm text-[#545A4E] max-w-md mx-auto">
-                Thank you, <strong>{formData.name}</strong>. Your request has been logged in our cloud registry under reference code:
+                Thank you, <strong>{formData.name}</strong>. Your proposal has been transmitted directly to Syed at <strong>analytique.team@gmail.com</strong>.
               </p>
               <div className="inline-block px-4 py-2 bg-white border border-[#D5CDC0] rounded-xl font-mono text-base font-bold text-[#1E201E]">
-                {referenceId}
+                Ref: {referenceId}
               </div>
               <p className="text-xs text-[#7B8273] max-w-md mx-auto">
-                A confirmation has been queued for <strong>{formData.email}</strong> and forwarded directly to <strong>analytique.team@gmail.com</strong>.
+                We will review your dataset and business question within 24 business hours.
               </p>
               <div className="pt-4">
                 <button
@@ -142,7 +142,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   }}
                   className="px-6 py-2.5 text-xs font-semibold uppercase tracking-wider bg-[#1E201E] text-white rounded-full hover:bg-[#343831] transition-all"
                 >
-                  Done
+                  Close
                 </button>
               </div>
             </div>
@@ -158,7 +158,12 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                     required
                     placeholder="e.g. Alex Morgan"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      startTransition(() => {
+                        setFormData((prev) => ({ ...prev, name: val }));
+                      });
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[#D8D2C5] bg-white text-sm text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
                   />
                 </div>
@@ -171,7 +176,12 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                     required
                     placeholder="alex@company.com"
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      startTransition(() => {
+                        setFormData((prev) => ({ ...prev, email: val }));
+                      });
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[#D8D2C5] bg-white text-sm text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
                   />
                 </div>
@@ -186,7 +196,12 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                     type="text"
                     placeholder="e.g. Northstar Retail"
                     value={formData.company}
-                    onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      startTransition(() => {
+                        setFormData((prev) => ({ ...prev, company: val }));
+                      });
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[#D8D2C5] bg-white text-sm text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
                   />
                 </div>
@@ -196,7 +211,12 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   </label>
                   <select
                     value={formData.serviceId}
-                    onChange={(e) => setFormData({ ...formData, serviceId: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      startTransition(() => {
+                        setFormData((prev) => ({ ...prev, serviceId: val }));
+                      });
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[#D8D2C5] bg-white text-sm text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
                   >
                     {SERVICES.map((s) => (
@@ -215,7 +235,12 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   </label>
                   <select
                     value={formData.budget}
-                    onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      startTransition(() => {
+                        setFormData((prev) => ({ ...prev, budget: val }));
+                      });
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[#D8D2C5] bg-white text-sm text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
                   >
                     <option value="Under $300">Under $300 (Small Automation / Fix)</option>
@@ -230,7 +255,12 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   </label>
                   <select
                     value={formData.timeline}
-                    onChange={(e) => setFormData({ ...formData, timeline: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      startTransition(() => {
+                        setFormData((prev) => ({ ...prev, timeline: val }));
+                      });
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[#D8D2C5] bg-white text-sm text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
                   >
                     <option value="Within 5 days">Express (Within 5 days)</option>
@@ -249,12 +279,16 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   rows={4}
                   placeholder="Describe your dataset, current bottlenecks (e.g. manual Excel errors, slow SQL), and the desired deliverables..."
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    startTransition(() => {
+                      setFormData((prev) => ({ ...prev, description: val }));
+                    });
+                  }}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[#D8D2C5] bg-white text-sm text-[#1E201E] focus:outline-none focus:ring-2 focus:ring-[#A66F4F]/40"
                 />
               </div>
 
-              {/* Sample Brief Attachment Note */}
               <div className="p-3.5 bg-white border border-dashed border-[#C5BCAD] rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <UploadCloud className="w-5 h-5 text-[#A66F4F]" />
@@ -280,7 +314,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   className="w-full py-3 text-xs font-semibold uppercase tracking-wider bg-[#1E201E] hover:bg-[#323630] text-white rounded-full transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
                   {loading ? (
-                    <span>Logging to Cloud Registry...</span>
+                    <span>Transmitting Quote...</span>
                   ) : (
                     <>
                       <span>Submit Quote Request</span>
