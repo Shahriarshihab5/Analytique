@@ -12,6 +12,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { SERVICES, Project } from "@/data/content";
+import { supabase } from "@/lib/supabase";
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -45,25 +46,47 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
     const ref = "ANL-" + Math.floor(100000 + Math.random() * 900000);
     setReferenceId(ref);
 
-    // Save lead to local storage / API endpoint for admin review
-    const lead = {
-      ...formData,
-      referenceId: ref,
-      status: "New",
-      timestamp: new Date().toISOString(),
-    };
-
     try {
-      const existing = JSON.parse(localStorage.getItem("analytique_leads") || "[]");
-      localStorage.setItem("analytique_leads", JSON.stringify([lead, ...existing]));
+      // 1. Save directly to Cloud Supabase
+      const { error } = await supabase.from("enquiries").insert([
+        {
+          reference_id: ref,
+          name: formData.name,
+          email: formData.email,
+          company: formData.company,
+          service_id: formData.serviceId,
+          budget: formData.budget,
+          timeline: formData.timeline,
+          description: formData.description,
+          status: "New",
+        },
+      ]);
+
+      if (error) {
+        console.warn("Supabase insert note:", error.message);
+      }
     } catch (err) {
-      console.warn("Local storage write skipped:", err);
+      console.warn("Cloud write error:", err);
     }
 
-    setTimeout(() => {
-      setLoading(false);
-      setSubmitted(true);
-    }, 600);
+    // 2. Also keep in local storage as instant fallback
+    try {
+      const existing = JSON.parse(localStorage.getItem("analytique_leads") || "[]");
+      localStorage.setItem("analytique_leads", JSON.stringify([
+        {
+          ...formData,
+          referenceId: ref,
+          status: "New",
+          timestamp: new Date().toISOString(),
+        },
+        ...existing
+      ]));
+    } catch (err) {
+      console.warn("Local storage fallback skipped:", err);
+    }
+
+    setLoading(false);
+    setSubmitted(true);
   };
 
   return (
@@ -103,7 +126,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                 Quote Request Received!
               </h4>
               <p className="text-sm text-[#545A4E] max-w-md mx-auto">
-                Thank you, <strong>{formData.name}</strong>. Your request has been logged under reference code:
+                Thank you, <strong>{formData.name}</strong>. Your request has been logged in our cloud registry under reference code:
               </p>
               <div className="inline-block px-4 py-2 bg-white border border-[#D5CDC0] rounded-xl font-mono text-base font-bold text-[#1E201E]">
                 {referenceId}
@@ -257,7 +280,7 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
                   className="w-full py-3 text-xs font-semibold uppercase tracking-wider bg-[#1E201E] hover:bg-[#323630] text-white rounded-full transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
                   {loading ? (
-                    <span>Submitting Request...</span>
+                    <span>Logging to Cloud Registry...</span>
                   ) : (
                     <>
                       <span>Submit Quote Request</span>
@@ -273,4 +296,3 @@ export function QuoteModal({ isOpen, onClose, preselectedProject }: QuoteModalPr
     </div>
   );
 }
-

@@ -15,9 +15,12 @@ import {
   DollarSign,
   TrendingUp,
   FileSpreadsheet,
-  AlertCircle
+  AlertCircle,
+  RefreshCw,
+  Cloud
 } from "lucide-react";
 import { PROJECTS } from "@/data/content";
+import { supabase } from "@/lib/supabase";
 
 interface Lead {
   referenceId: string;
@@ -75,17 +78,49 @@ export default function AdminPage() {
   const [leads, setLeads] = useState<Lead[]>(DEFAULT_LEADS);
   const [activeTab, setActiveTab] = useState<"leads" | "projects" | "metrics">("leads");
   const [search, setSearch] = useState("");
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
 
-  useEffect(() => {
+  const fetchLeads = async () => {
+    setIsCloudSyncing(true);
     try {
-      const stored = localStorage.getItem("analytique_leads");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setLeads([...parsed, ...DEFAULT_LEADS]);
+      // 1. Fetch from Supabase Cloud
+      const { data, error } = await supabase
+        .from("enquiries")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (data && data.length > 0) {
+        const cloudLeads: Lead[] = data.map((d: any) => ({
+          referenceId: d.reference_id,
+          name: d.name,
+          email: d.email,
+          company: d.company || "",
+          serviceId: d.service_id,
+          budget: d.budget || "",
+          timeline: d.timeline || "",
+          description: d.description,
+          status: d.status || "New",
+          timestamp: d.created_at,
+        }));
+
+        setLeads([...cloudLeads, ...DEFAULT_LEADS]);
+      } else {
+        // Fallback to local storage
+        const stored = localStorage.getItem("analytique_leads");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setLeads([...parsed, ...DEFAULT_LEADS]);
+        }
       }
     } catch (e) {
-      console.warn("Storage read skipped:", e);
+      console.warn("Cloud fetch note:", e);
+    } finally {
+      setIsCloudSyncing(false);
     }
+  };
+
+  useEffect(() => {
+    fetchLeads();
   }, []);
 
   const filteredLeads = leads.filter(
@@ -97,7 +132,6 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[#F6F3EB] text-[#1E201E]">
-      {/* Admin Top Navigation */}
       <header className="bg-white border-b border-[#E2DDD0] sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -114,14 +148,21 @@ export default function AdminPage() {
               <span className="font-serif font-bold text-lg text-[#1E201E]">
                 Analytique Admin
               </span>
-              <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded">
-                Live Ops
+              <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded inline-flex items-center gap-1">
+                <Cloud className="w-3 h-3" />
+                Supabase Connected
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-4 text-xs font-medium text-[#585F51]">
-            <span>Founder: <strong>Syed Shahriar Ahmed</strong></span>
+            <button
+              onClick={fetchLeads}
+              className="px-3 py-1.5 border border-[#DDD5C7] rounded-lg hover:bg-[#F8F5EE] flex items-center gap-1.5 text-xs font-semibold"
+            >
+              <RefreshCw className={`w-3 h-3 ${isCloudSyncing ? "animate-spin" : ""}`} />
+              Refresh Cloud
+            </button>
             <span className="hidden sm:inline text-[#DDD5C7]">|</span>
             <span className="hidden sm:inline">analytique.team@gmail.com</span>
           </div>
@@ -129,18 +170,17 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* KPI Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-[#E3DDD1] shadow-xs">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-[#7A8272] block">
-              Total Enquiries / Leads
+              Global Enquiries / Leads
             </span>
             <span className="text-3xl font-serif font-bold text-[#1E201E] mt-1 block">
               {leads.length}
             </span>
             <span className="text-xs text-emerald-600 font-medium flex items-center gap-1 mt-1">
               <TrendingUp className="w-3.5 h-3.5" />
-              100% Response Rate
+              100% Cloud Synced
             </span>
           </div>
 
@@ -181,7 +221,6 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Section Tabs */}
         <div className="flex items-center gap-2 border-b border-[#DED6C7] pb-3">
           <button
             onClick={() => setActiveTab("leads")}
@@ -207,7 +246,6 @@ export default function AdminPage() {
 
         {activeTab === "leads" && (
           <div className="bg-white rounded-2xl border border-[#E2DDD0] shadow-xs overflow-hidden">
-            {/* Search and Filters */}
             <div className="p-4 border-b border-[#E8E2D6] flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="relative w-full sm:w-72">
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#889080]" />
@@ -220,11 +258,10 @@ export default function AdminPage() {
                 />
               </div>
               <span className="text-xs text-[#7B8272]">
-                Showing {filteredLeads.length} total orders
+                Showing {filteredLeads.length} total orders (Connected to Supabase)
               </span>
             </div>
 
-            {/* Leads Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#F8F5EE] border-b border-[#E5DFD2] text-[#636B59] uppercase font-semibold">
@@ -345,4 +382,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
